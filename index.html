@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Merry Christmas — Hiệu ứng đẹp (cây thông)</title>
+<style>
+  :root{
+    --btn-bg: #ff4b4b;
+    --btn-hover: #ff6b6b;
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
+    background: #071428;
+    color: #fff;
+    overflow: hidden;
+  }
+
+  /* Canvas full screen */
+  #bgCanvas, #treeCanvas{
+    position: fixed;
+    inset: 0;           /* top:0; right:0; bottom:0; left:0; */
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+  }
+  /* ensure tree canvas sits above background */
+  #bgCanvas{ z-index: 0 }
+  #treeCanvas{ z-index: 5 }
+
+  /* Container for UI */
+  .ui {
+    position: relative;
+    z-index: 10;
+    pointer-events: none; /* allow clicks to pass through unless specified */
+    height: 100%;
+  }
+
+  /* Button mở thư */
+  #openLetterBtn {
+    position: absolute;
+    right: 32px;
+    bottom: 32px;
+    pointer-events: auto;
+    background: linear-gradient(180deg, var(--btn-bg), #e33b3b);
+    border: none;
+    color: white;
+    padding: 14px 22px;
+    border-radius: 14px;
+    font-size: 16px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s;
+  }
+  #openLetterBtn:hover{ transform: translateY(-4px); box-shadow: 0 18px 30px rgba(0,0,0,0.45); }
+  #openLetterBtn:active{ transform: translateY(-2px) scale(.99); }
+
+  /* Letter popup */
+  #letterPopup {
+    position: fixed;
+    inset: 0;
+    display: none; /* shown when active */
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    background: linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.6));
+    backdrop-filter: blur(4px);
+    animation: fadeBg .18s ease;
+  }
+  @keyframes fadeBg { from { opacity: 0 } to { opacity: 1 } }
+
+  .letter {
+    width: min(420px, 92%);
+    background: linear-gradient(180deg,#fffefc,#fff7ee);
+    border-radius: 12px;
+    padding: 26px;
+    box-shadow: 0 20px 60px rgba(4,10,20,0.6);
+    color: #111;
+    text-align: center;
+    pointer-events: auto;
+    transform-origin: center;
+    animation: pop .26s cubic-bezier(.2,.9,.3,1);
+    font-family: "Georgia", "Times New Roman", serif;
+  }
+  @keyframes pop { from{ transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+
+  .letter h1{
+    margin: 0 0 6px 0;
+    font-size: 20px;
+    letter-spacing: .6px;
+  }
+  .letter p{
+    margin: 6px 0 0 0;
+    font-size: 18px;
+    line-height: 1.4;
+  }
+
+  .closeBtn {
+    margin-top: 18px;
+    background:#232323;
+    color:white;
+    border:none;
+    padding:8px 14px;
+    border-radius:10px;
+    cursor:pointer;
+  }
+
+  /* Tiny ornament top-left */
+  .logo {
+    position: absolute;
+    left: 26px;
+    top: 26px;
+    z-index: 11;
+    pointer-events: none;
+    font-weight: 600;
+    font-size: 14px;
+    background: rgba(255,255,255,0.05);
+    padding: 8px 12px;
+    border-radius: 10px;
+    backdrop-filter: blur(2px);
+  }
+
+  /* Responsive tweaks */
+  @media (max-width:480px){
+    #openLetterBtn { right: 18px; bottom: 18px; padding: 12px 16px; }
+    .letter{ padding:18px; }
+  }
+</style>
+</head>
+<body>
+  <!-- Canvas background -->
+  <canvas id="bgCanvas"></canvas>
+  <!-- Tree canvas (foreground) -->
+  <canvas id="treeCanvas"></canvas>
+
+  <!-- UI overlay -->
+  <div class="ui">
+    <div class="logo">🎁 Merry — Trân</div>
+    <button id="openLetterBtn">Nhấn vô đây iii</button>
+  </div>
+
+  <!-- Letter popup -->
+  <div id="letterPopup" role="dialog" aria-modal="true">
+    <div class="letter" id="letterBox">
+      <h1 id="letterTitle">🎄 Một lời chúc đặc biệt</h1>
+      <p id="letterText">Chúc Trân giáng sinh vui vẻ nhe !!!</p>
+      <button class="closeBtn" id="closeBtn">Đóng</button>
+    </div>
+  </div>
+
+<script>
+/* ============================
+   Canvas animated background (unchanged)
+   ============================ */
+(function(){
+  const canvas = document.getElementById("bgCanvas");
+  const ctx = canvas.getContext("2d");
+  let W = canvas.width = innerWidth;
+  let H = canvas.height = innerHeight;
+  const DPR = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.scale(DPR, DPR);
+
+  window.addEventListener('resize', resize, {passive:true});
+  function resize(){
+    W = canvas.width = innerWidth;
+    H = canvas.height = innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.scale(DPR, DPR);
+  }
+
+  // mouse parallax - used also by tree canvas
+  const mouse = {x: W/2, y: H/2};
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, {passive:true});
+
+  // utility random
+  const rand = (a,b) => a + Math.random()*(b-a);
+
+  // particles for bg
+  let bokehs = [];
+  let stars = [];
+  let snows = [];
+
+  function initParticles(){
+    bokehs = [];
+    stars = [];
+    snows = [];
+    const bokehCount = Math.round((W/120) * (H/700) ) + 8;
+    for(let i=0;i<bokehCount;i++){
+      bokehs.push({ x: Math.random()*W, y: Math.random()*H, r: rand(30,160), vx: rand(-0.02,0.02), vy: rand(-0.02,0.02), alpha: rand(0.06,0.22), hue: rand(180,220) });
+    }
+    const starCount = Math.round((W*H)/90000) + 20;
+    for(let i=0;i<starCount;i++){
+      stars.push({ x: Math.random()*W, y: Math.random()*H*0.7, r: Math.random()*1.6 + 0.4, twinkle: Math.random()*0.9 + 0.1, baseAlpha: rand(0.4,1) });
+    }
+    const snowCount = Math.round(W/12);
+    for(let i=0;i<snowCount;i++){
+      snows.push({ x: Math.random()*W, y: Math.random()*H, r: rand(0.8,3.6), vy: rand(0.3,1.2), vx: rand(-0.4,0.4), angle: Math.random()*Math.PI*2, swing: rand(10,60), alpha: rand(0.6,1) });
+    }
+  }
+
+  function drawBackground(){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, '#061427');
+    g.addColorStop(0.45, '#0b2940');
+    g.addColorStop(0.75, '#16384a');
+    g.addColorStop(1, '#0b1f2a');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    const g2 = ctx.createLinearGradient(W*0.1, H*0.05, W*0.9, H*0.6);
+    g2.addColorStop(0, 'rgba(120,200,255,0.06)');
+    g2.addColorStop(0.3, 'rgba(160,220,200,0.06)');
+    g2.addColorStop(1, 'rgba(255,200,200,0.02)');
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.ellipse(W*0.55, H*0.25, W*0.7, H*0.42, -0.3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawBokehs(t){
+    for(let i=0;i<bokehs.length;i++){
+      const p = bokehs[i];
+      const px = p.x + (mouse.x - W/2) * 0.02 * (i%3 - 1);
+      const py = p.y + (mouse.y - H/2) * 0.02 * (i%4 - 1);
+      const g = ctx.createRadialGradient(px, py, p.r*0.12, px, py, p.r);
+      const hue = p.hue + Math.sin((t*0.0006 + i)*0.6) * 8;
+      g.addColorStop(0, `hsla(${hue},90%,85%,${p.alpha*1.0})`);
+      g.addColorStop(0.35, `hsla(${hue},80%,60%,${p.alpha*0.7})`);
+      g.addColorStop(1, `hsla(${hue},70%,45%,0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(px, py, p.r, 0, Math.PI*2);
+      ctx.fill();
+      p.x += p.vx; p.y += p.vy;
+      if(p.x < -p.r) p.x = W + p.r;
+      if(p.x > W + p.r) p.x = -p.r;
+      if(p.y < -p.r) p.y = H + p.r;
+      if(p.y > H + p.r) p.y = -p.r;
+    }
+  }
+
+  function drawStars(t){
+    for(let i=0;i<stars.length;i++){
+      const s = stars[i];
+      const tw = 0.6 + 0.4*Math.sin(t*0.002 + i);
+      ctx.globalAlpha = s.baseAlpha * tw * s.twinkle;
+      ctx.beginPath();
+      ctx.fillStyle = 'white';
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSnows(t){
+    for(let i=0;i<snows.length;i++){
+      const s = snows[i];
+      s.angle += 0.002 * (0.5 + s.r*0.2);
+      s.x += s.vx + Math.sin(s.angle)*0.3 + (mouse.x - W/2) * 0.0006 * s.r;
+      s.y += s.vy;
+      if(s.y > H + 20){ s.y = -10; s.x = Math.random()*W; }
+      ctx.globalAlpha = s.alpha;
+      ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,1)'; ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSparks(t){
+    const count = Math.max(6, Math.round(W/260));
+    for(let i=0;i<count;i++){
+      const rx = (i/count) * W + Math.sin(t*0.001 + i)*40;
+      const ry = H*0.6 + Math.cos(t*0.0012 + i)*40;
+      const r = 6 + Math.abs(Math.sin(t*0.002 + i))*10;
+      const grad = ctx.createRadialGradient(rx, ry, 0, rx, ry, r);
+      grad.addColorStop(0, 'rgba(255,240,220,0.6)');
+      grad.addColorStop(0.4, 'rgba(255,200,180,0.17)');
+      grad.addColorStop(1, 'rgba(255,200,160,0)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(rx, ry, r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  initParticles();
+  let last = performance.now();
+  function loop(t){
+    const dt = t - last; last = t;
+    drawBackground(); drawBokehs(t); drawStars(t); drawSparks(t); drawSnows(t);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})(); /* end bg IIFE */
+
+
+/* ============================
+   Tree canvas: draw decorative Christmas tree with garland, lights, ornaments and star
+   - separate canvas for easier layering & perf
+   ============================ */
+(function(){
+  const c = document.getElementById('treeCanvas');
+  const ctx = c.getContext('2d');
+  const DPR = Math.max(window.devicePixelRatio || 1, 1);
+  let W = c.width = innerWidth;
+  let H = c.height = innerHeight;
+  c.width = W * DPR; c.height = H * DPR; c.style.width = W + 'px'; c.style.height = H + 'px'; ctx.scale(DPR, DPR);
+
+  window.addEventListener('resize', resize, {passive:true});
+  const mouse = {x: W/2, y: H/2};
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, {passive:true});
+
+  function resize(){
+    W = c.width = innerWidth; H = c.height = innerHeight;
+    c.width = W * DPR; c.height = H * DPR; c.style.width = W + 'px'; c.style.height = H + 'px'; ctx.scale(DPR, DPR);
+    initTree();
+  }
+
+  // Tree parameters
+  let centerX, baseY, treeHeight, treeWidth, layers;
+  let lights = [];
+  let ornaments = [];
+  let garlandPoints = [];
+
+  function initTree(){
+    centerX = W/2;
+    baseY = H * 0.86;
+    treeHeight = Math.min(H*0.62, W*0.6);
+    treeWidth = treeHeight * 0.55;
+    layers = 7;
+
+    // build garland points (a spiral-like curve across tree)
+    garlandPoints = [];
+    const points = Math.round(200 * (treeHeight/600));
+    for(let i=0;i<points;i++){
+      const t = i/(points-1); // 0..1 from top to bottom
+      // y position
+      const y = baseY - t * treeHeight;
+      // radius at this height (wider near bottom)
+      const r = (t) * treeWidth * 0.95;
+      // angle - make a few turns along the height
+      const turns = 3.2;
+      const angle = (t * turns * Math.PI * 2) + (t*1.6);
+      const x = centerX + Math.sin(angle) * r;
+      garlandPoints.push({x,y,angle,t});
+    }
+
+    // lights along garland
+    lights = [];
+    const lightCount = Math.round(treeHeight/9);
+    const palette = ['#ffd166','#ff5d8f','#8be9fd','#ffb86b','#a3f3a3'];
+    for(let i=0;i<lightCount;i++){
+      const u = i / lightCount;
+      // map to garland point index
+      const idx = Math.floor(u * (garlandPoints.length-1));
+      lights.push({ idx, phase: Math.random()*Math.PI*2, color: palette[Math.floor(Math.random()*palette.length)], size: rand(2.6,5.8), glow: rand(6,18), speed: rand(0.8,1.6) });
+    }
+
+    // ornaments (placed within tree triangle area)
+    ornaments = [];
+    const ornamentCount = Math.round(treeHeight/22);
+    const ornamentsPalette = ['#d7263d','#2ec4b6','#ffd166','#6a4c93','#ff7b54'];
+    for(let i=0;i<ornamentCount;i++){
+      // random vertical position inside tree
+      const t = Math.random();
+      const y = baseY - t * treeHeight;
+      const maxR = (t) * treeWidth * 0.9;
+      const x = centerX + (Math.random()*2 -1) * maxR * 0.8;
+      const r = rand(5,12);
+      ornaments.push({x,y,r,color:ornamentsPalette[Math.floor(Math.random()*ornamentsPalette.length)], swing: Math.random()*0.6});
+    }
+  }
+
+  function rand(a,b){ return a + Math.random()*(b-a); }
+
+  function drawTreeShape(){
+    // draw layered foliage (stacked triangles with subtle gradients)
+    for(let i=0;i<layers;i++){
+      const t = i/(layers-1);
+      const h = treeHeight * (0.18 + 0.82 * ((layers - i)/layers));
+      const y = baseY - (i/(layers-1)) * (treeHeight - h*0.6);
+      const w = treeWidth * (0.28 + 0.85 * ((layers - i)/layers));
+
+      // create gradient for each layer
+      const g = ctx.createLinearGradient(centerX, y - h*0.6, centerX, y + h*0.4);
+      g.addColorStop(0, `rgba(${30 + i*6}, ${90 + i*8}, ${30 + i*4}, 0.95)`);
+      g.addColorStop(1, `rgba(${10 + i*4}, ${60 + i*6}, ${12 + i*3}, 0.95)`);
+
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(centerX, y - h);
+      ctx.lineTo(centerX - w, y + h*0.6);
+      ctx.lineTo(centerX + w, y + h*0.6);
+      ctx.closePath();
+      // subtle inner shadow
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 18 - i*2;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // trunk
+    const trunkH = Math.max(28, treeHeight*0.08);
+    const trunkW = Math.max(26, treeWidth*0.18);
+    ctx.beginPath();
+    ctx.fillStyle = '#6b3f1a';
+    ctx.fillRect(centerX - trunkW/2, baseY + 6, trunkW, trunkH);
+    // trunk highlight
+    ctx.beginPath(); ctx.fillStyle = 'rgba(255,230,200,0.08)'; ctx.fillRect(centerX - trunkW/6, baseY + 8, trunkW/6, trunkH-6);
+  }
+
+  function drawGarland(t){
+    // stroke along garland points, with slight wavy animation
+    ctx.beginPath();
+    for(let i=0;i<garlandPoints.length;i++){
+      const p = garlandPoints[i];
+      // wobble using time and mouse
+      const wob = Math.sin(t*0.002 + i*0.12) * (6 * (1 - p.t)) + (mouse.x - W/2) * 0.0008 * (1-p.t);
+      const x = p.x + Math.sin(p.t*12 + t*0.001)*3 + wob;
+      const y = p.y + Math.cos(p.t*8 + t*0.0009)*1.6;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    // golden garland stroke
+    const grad = ctx.createLinearGradient(centerX - treeWidth, baseY - treeHeight, centerX + treeWidth, baseY);
+    grad.addColorStop(0, '#ffd7a6'); grad.addColorStop(0.5, '#ffdd9d'); grad.addColorStop(1, '#f9c36b');
+    ctx.lineWidth = 6; ctx.strokeStyle = grad; ctx.lineJoin = 'round'; ctx.stroke();
+  }
+
+  function drawLights(t){
+    for(let i=0;i<lights.length;i++){
+      const L = lights[i];
+      // get position from garland points
+      const idx = Math.floor((L.idx + Math.sin(t*0.001 * L.speed + i) * 2) % garlandPoints.length);
+      const p = garlandPoints[(idx+garlandPoints.length)%garlandPoints.length];
+      // small jitter
+      const jitter = Math.sin(t*0.003 + i) * 0.8;
+      const x = p.x + Math.cos(p.angle*1.1 + t*0.001)*1.4 + jitter;
+      const y = p.y + Math.sin(p.angle*0.9 + t*0.0009)*1.2;
+      // twinkle alpha
+      const a = 0.6 + 0.4*Math.sin(t*0.006 * L.speed + L.phase + i);
+      // glow
+      ctx.save(); ctx.beginPath(); ctx.fillStyle = L.color; ctx.globalAlpha = a;
+      ctx.shadowColor = L.color; ctx.shadowBlur = L.glow; ctx.arc(x,y,L.size,0,Math.PI*2); ctx.fill(); ctx.restore();
+      // tiny core
+      ctx.beginPath(); ctx.fillStyle = '#fff'; ctx.globalAlpha = Math.min(1, a*0.9); ctx.arc(x,y,Math.max(1.2, L.size*0.36),0,Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawOrnaments(t){
+    for(let i=0;i<ornaments.length;i++){
+      const o = ornaments[i];
+      const sway = Math.sin(t*0.0015 + i*1.7) * o.swing * 6;
+      const x = o.x + sway + (mouse.x - W/2) * 0.002 * (1 - (baseY - o.y)/treeHeight);
+      const y = o.y + Math.cos(t*0.001 + i)*0.4;
+      // base
+      ctx.beginPath(); ctx.fillStyle = o.color; ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.arc(x,y,o.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+      // specular highlight
+      ctx.beginPath(); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.arc(x - o.r*0.35, y - o.r*0.45, o.r*0.4, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  function drawStar(t){
+    const top = garlandPoints[0] || {x:centerX,y:baseY - treeHeight};
+    const x = top.x; const y = top.y - 8 + Math.sin(t*0.003)*2;
+    // big glow
+    ctx.save(); ctx.beginPath(); ctx.fillStyle = 'rgba(255,240,200,0.12)'; ctx.shadowBlur = 36; ctx.shadowColor = 'rgba(255,230,150,0.9)'; ctx.arc(x,y,34,0,Math.PI*2); ctx.fill(); ctx.restore();
+    // star arms
+    ctx.save(); ctx.translate(x,y); ctx.rotate(t*0.0008);
+    const arms = 8; for(let i=0;i<arms;i++){
+      const ang = (i/arms)*Math.PI*2;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(ang)*18, Math.sin(ang)*18); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,243,200,0.98)'; ctx.stroke();
+    }
+    // core
+    ctx.beginPath(); ctx.fillStyle = '#fff9db'; ctx.arc(0,0,6,0,Math.PI*2); ctx.fill(); ctx.restore();
+  }
+
+  function loop(t){
+    ctx.clearRect(0,0,W,H);
+    // slight vignette to accentuate tree
+    ctx.save();
+    const vg = ctx.createRadialGradient(centerX, baseY - treeHeight*0.25, treeWidth*0.4, centerX, baseY - treeHeight*0.25, treeWidth*1.8);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.35)');
+    ctx.fillStyle = vg; ctx.fillRect(0,0,W,H); ctx.restore();
+
+    drawTreeShape();
+    drawGarland(t);
+    drawOrnaments(t);
+    drawLights(t);
+    drawStar(t);
+
+    requestAnimationFrame(loop);
+  }
+
+  initTree();
+  requestAnimationFrame(loop);
+})();
+
+/* ===============================
+   Popup letter logic & typing (unchanged)
+   =============================== */
+const openBtn = document.getElementById('openLetterBtn');
+const popup = document.getElementById('letterPopup');
+const closeBtn = document.getElementById('closeBtn');
+const letterText = document.getElementById('letterText');
+
+openBtn.addEventListener('click', () => {
+  popup.style.display = 'flex';
+  const message = "Chúc Trân giáng sinh vui vẻ nhe !!!";
+  letterText.textContent = '';
+  let i = 0;
+  const interval = setInterval(() => { letterText.textContent += message[i++]; if(i >= message.length) clearInterval(interval); }, 45);
+});
+
+closeBtn.addEventListener('click', () => { popup.style.display = 'none'; });
+
+popup.addEventListener('click', (e) => { if(e.target === popup) popup.style.display = 'none'; });
+
+</script>
+  <!-- Controllers -->
+  <div id="controls" class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg flex gap-4 z-50">
+    <button id="toggleLights" class="px-4 py-2 bg-blue-500 text-white rounded-xl">Tắt/Bật đèn</button>
+    <button id="speedUp" class="px-4 py-2 bg-green-500 text-white rounded-xl">Nhanh hơn</button>
+    <button id="slowDown" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Chậm lại</button>
+  </div>
+
+  <!-- Pointer effect for the letter area -->
+  <style>
+    #letter-pointer {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: url('https://cdn-icons-png.flaticon.com/512/32/32213.png') no-repeat center/contain;
+      animation: pointer-bounce 1s infinite ease-in-out;
+      pointer-events: none;
+      z-index: 100;
+    }
+    @keyframes pointer-bounce {
+      0%,100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+  </style>
+  <div id="letter-pointer"></div>
+
+  <script>
+    // Control buttons
+    const lights = document.querySelectorAll('.light');
+    let speed = 1;
+
+    document.getElementById('toggleLights').onclick = () => {
+      lights.forEach(l => l.style.opacity = l.style.opacity === '0' ? '1' : '0');
+    };
+
+    document.getElementById('speedUp').onclick = () => {
+      speed = Math.max(0.2, speed - 0.2);
+      lights.forEach(l => l.style.animationDuration = speed + 's');
+    };
+
+    document.getElementById('slowDown').onclick = () => {
+      speed += 0.2;
+      lights.forEach(l => l.style.animationDuration = speed + 's');
+    };
+
+    // Pointer effect targeting the letter area
+    const pointer = document.getElementById('letter-pointer');
+    const target = document.getElementById('open-letter-area');
+
+    function positionPointer() {
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      pointer.style.left = rect.left + rect.width/2 - 20 + 'px';
+      pointer.style.top = rect.top - 50 + 'px';
+    }
+
+    positionPointer();
+    window.addEventListener('resize', positionPointer);
+  </script>
+</body>
+</html>
